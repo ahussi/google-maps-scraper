@@ -13,9 +13,9 @@ RUN export PATH=$PATH:/usr/local/go/bin:/root/go/bin \
        else \
          GO_ARCH="amd64"; \
        fi \
-    && wget -q "https://go.dev/dl/go1.26.2.linux-${GO_ARCH}.tar.gz" \
-    && tar -C /usr/local -xzf "go1.26.2.linux-${GO_ARCH}.tar.gz" \
-    && rm "go1.26.2.linux-${GO_ARCH}.tar.gz" \
+    && wget -q "https://go.dev/dl/go1.24.2.linux-${GO_ARCH}.tar.gz" \
+    && tar -C /usr/local -xzf "go1.24.2.linux-${GO_ARCH}.tar.gz" \
+    && rm "go1.24.2.linux-${GO_ARCH}.tar.gz" \
     # ... (Rest des ursprünglichen RUN-Befehls: Nodejs, Playwright, etc.)
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
@@ -26,7 +26,7 @@ RUN export PATH=$PATH:/usr/local/go/bin:/root/go/bin \
     && playwright install chromium --with-deps
 
 # Build stage
-FROM golang:1.26.2-trixie AS builder
+FROM golang:1.24.2-bookworm AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
@@ -34,7 +34,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o /usr/bin/google-maps-scraper
 
 # Final stage
-FROM debian:trixie-slim
+FROM debian:bookworm-slim
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 ENV PLAYWRIGHT_DRIVER_PATH=/opt
 
