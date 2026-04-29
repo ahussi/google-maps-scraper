@@ -40,13 +40,15 @@ type Options struct {
 }
 
 // DefaultOptions returns a sensible set of default scraper options.
+// Personal note: bumped Concurrency from 4 to 2 to be gentler on my machine,
+// and increased Timeout to 45s since my connection can be slow.
 func DefaultOptions() Options {
 	return Options{
-		Concurrency: 4,
+		Concurrency: 2,
 		MaxResults:  0,
 		Language:    "en",
 		Headless:    true,
-		Timeout:     30 * time.Second,
+		Timeout:     45 * time.Second,
 	}
 }
 
@@ -121,32 +123,4 @@ func (s *Scraper) Scrape(ctx context.Context, queries []string) (<-chan Result, 
 
 // scrapeQuery opens a single Google Maps search and collects results.
 func (s *Scraper) scrapeQuery(ctx context.Context, query string, out chan<- Result) error {
-	page, err := s.br.NewPage()
-	if err != nil {
-		return fmt.Errorf("new page: %w", err)
-	}
-	defer page.Close()
-
-	url := fmt.Sprintf(
-		"https://www.google.com/maps/search/%s/?hl=%s",
-		playwright.String(query), s.opts.Language,
-	)
-
-	_, err = page.Goto(url, playwright.PageGotoOptions{
-		Timeout:   playwright.Float(float64(s.opts.Timeout.Milliseconds())),
-		WaitUntil: playwright.WaitUntilStateNetworkidle,
-	})
-	if err != nil {
-		return fmt.Errorf("navigate to %s: %w", url, err)
-	}
-
-	// Placeholder: real extraction logic lives in dedicated extractor helpers.
-	// This stub ensures the pipeline compiles and the channel contract is valid.
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case out <- Result{Name: query, GoogleMapsURL: url}:
-	}
-
-	return nil
-}
+	page, err := s.br.NewPage
