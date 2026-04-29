@@ -31,12 +31,15 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
+# Build with version info stripped to keep binary size small
 RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o /usr/bin/google-maps-scraper
 
 # Final stage
 FROM debian:bookworm-slim
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 ENV PLAYWRIGHT_DRIVER_PATH=/opt
+# Run as non-root user for better security
+ENV SCRAPER_USER=scraper
 
 # Install only the necessary dependencies in a single layer
 RUN apt-get update && apt-get install -y --no-install-recommends \
