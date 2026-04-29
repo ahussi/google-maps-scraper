@@ -2,83 +2,81 @@ package main
 
 import (
 	"context"
-	"errors"
+	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/gosom/google-maps-scraper/runner"
-	"github.com/gosom/google-maps-scraper/runner/databaserunner"
-	"github.com/gosom/google-maps-scraper/runner/filerunner"
-	"github.com/gosom/google-maps-scraper/runner/installplaywright"
-	"github.com/gosom/google-maps-scraper/runner/lambdaaws"
-	"github.com/gosom/google-maps-scraper/runner/webrunner"
+	"github.com/gosom/google-maps-scraper/scraper"
+)
+
+var (
+	// Version is set at build time via ldflags
+	Version = "dev"
+	// Commit is set at build time via ldflags
+	Commit = "none"
 )
 
 func main() {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	runner.Banner()
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		<-sigChan
-
-		log.Println("Received signal, shutting down...")
-
-		cancel()
-	}()
-
-	cfg := runner.ParseConfig()
-
-	runnerInstance, err := runnerFactory(cfg)
-	if err != nil {
-		cancel()
-		os.Stderr.WriteString(err.Error() + "\n")
-
-		runner.Telemetry().Close()
-
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-
-	if err := runnerInstance.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-		os.Stderr.WriteString(err.Error() + "\n")
-
-		_ = runnerInstance.Close(ctx)
-		runner.Telemetry().Close()
-
-		cancel()
-
-		os.Exit(1)
-	}
-
-	_ = runnerInstance.Close(ctx)
-	runner.Telemetry().Close()
-
-	cancel()
-
-	os.Exit(0)
 }
 
-func runnerFactory(cfg *runner.Config) (runner.Runner, error) {
-	switch cfg.RunMode {
-	case runner.RunModeFile:
-		return filerunner.New(cfg)
-	case runner.RunModeDatabase, runner.RunModeDatabaseProduce:
-		return databaserunner.New(cfg)
-	case runner.RunModeInstallPlaywright:
-		return installplaywright.New(cfg)
-	case runner.RunModeWeb:
-		return webrunner.New(cfg)
-	case runner.RunModeAwsLambda:
-		return lambdaaws.New(cfg)
-	case runner.RunModeAwsLambdaInvoker:
-		return lambdaaws.NewInvoker(cfg)
-	default:
-		return nil, fmt.Errorf("%w: %d", runner.ErrInvalidRunMode, cfg.RunMode)
+func run() error {
+	cfg := scraper.Config{}
+
+	flag.StringVar(&cfg.InputFile, "input", "", "path to input file with search queries (one per line)")
+	flag.StringVar(&cfg.OutputFile, "output", "", "path to output CSV file (default: stdout)")
+	flag.IntVar(&cfg.Concurrency, "concurrency", 1, "number of concurrent browser tabs")
+	flag.IntVar(&cfg.MaxDepth, "depth", 10, "maximum number of results to scrape per query")
+	flag.StringVar(&cfg.Lang, "lang", "en", "language code for Google Maps (e.g. en, de, fr)")
+	flag.BoolVar(&cfg.Debug, "debug", false, "enable debug logging")
+	flag.BoolVar(&cfg.JSON, "json", false, "output results as JSON instead of CSV")
+	flag.BoolVar(&cfg.DSN, "dsn", false, "write results to a database using DSN from env SCRAPER_DSN")
+
+	version := flag.Bool("version", false, "print version and exit")
+
+	flag.Parse()
+
+	if *version {
+		fmt.Printf("google-maps-scraper version=%s commit=%s\n", Version, Commit)
+		return nil
 	}
+
+	if cfg.InputFile == "" {
+		// allow reading queries from positional args
+		cfg.Queries = flag.Args()
+		if len(cfg.Queries) == 0 {
+			return fmt.Errorf("no input file or queries provided; use -input or pass queries as arguments")
+		}
+	}
+
+	if cfg.DSN {
+		cfg.DatabaseDSN = os.Getenv("SCRAPER_DSN")
+		if cfg.DatabaseDSN == "" {
+			return fmt.Errorf("SCRAPER_DSN environment variable is required when -dsn flag is set")
+		}
+	}
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	s, err := scraper.New(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create scraper: %w", err)
+	}
+	defer s.Close()
+
+	if err := s.Run(ctx); err != nil {
+		if ctx.Err() != nil {
+			// graceful shutdown on signal
+			return nil
+		}
+		return fmt.Errorf("scraper run failed: %w", err)
+	}
+
+	return nil
 }
