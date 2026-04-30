@@ -30,7 +30,8 @@ func run() error {
 
 	flag.StringVar(&cfg.InputFile, "input", "", "path to input file with search queries (one per line)")
 	flag.StringVar(&cfg.OutputFile, "output", "", "path to output CSV file (default: stdout)")
-	flag.IntVar(&cfg.Concurrency, "concurrency", 1, "number of concurrent browser tabs")
+	// Increased default concurrency from 1 to 3 for faster scraping on my machine
+	flag.IntVar(&cfg.Concurrency, "concurrency", 3, "number of concurrent browser tabs")
 	flag.IntVar(&cfg.MaxDepth, "depth", 10, "maximum number of results to scrape per query")
 	flag.StringVar(&cfg.Lang, "lang", "en", "language code for Google Maps (e.g. en, de, fr)")
 	flag.BoolVar(&cfg.Debug, "debug", false, "enable debug logging")
